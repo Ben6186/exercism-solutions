@@ -29,9 +29,12 @@ jobs:
               print("CRITICAL ERROR: EXERCISM_TOKEN is missing!")
               exit(1)
 
-          headers = {"Authorization": f"Bearer {token}"}
+          # FIXED: Added a standard User-Agent header to prevent Cloudflare/WAF from throwing a 403 Forbidden
+          headers = {
+              "Authorization": f"Bearer {token}",
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+          }
           
-          # Fetch all solutions (including non-completed ones to be safe)
           url = "https://exercism.org"
           req = urllib.request.Request(url, headers=headers)
           
@@ -39,24 +42,23 @@ jobs:
               with urllib.request.urlopen(req) as response:
                   data = json.loads(response.read().decode())
           except Exception as e:
-              print(f"Failed to fetch solutions: {e}")
+              print(f"Failed to fetch solutions from API: {e}")
               exit(1)
 
-          solutions = data.get("results", [])
+          solutions = data.get("solutions", [])
           print(f"Found {len(solutions)} total solutions on your account.")
 
           for sol in solutions:
               uuid = sol.get("uuid")
               # Process solutions that are completed, iterated, or published
               if sol.get("status") not in ["completed", "iterated", "published"]:
-                  print(f"Skipping exercise {sol.get('exercise', {}).get('title')} because status is: {sol.get('status')}")
+                  print(f"Skipping exercise {sol.get('exercise', {}).get('slug')} because status is: {sol.get('status')}")
                   continue
 
               track = sol.get("track", {}).get("slug")
               exercise = sol.get("exercise", {}).get("slug")
               print(f"Syncing: Track={track} | Exercise={exercise}")
 
-              # Fetch the file list for this solution
               file_url = f"https://exercism.org/{uuid}/files"
               file_req = urllib.request.Request(file_url, headers=headers)
               
@@ -64,10 +66,9 @@ jobs:
                   with urllib.request.urlopen(file_req) as f_res:
                       file_data = json.loads(f_res.read().decode())
                   
-                  # Download each file
-                  paths = file_data.get("files", {}).get("paths", [])
+                  paths = file_data.get("files", [])
                   for path_str in paths:
-                      # Skip configuration metadata files if you just want code files
+                      # Skip configuration metadata files
                       if path_str.startswith(".exercism"):
                           continue
                           
@@ -77,7 +78,6 @@ jobs:
                       with urllib.request.urlopen(dl_req) as dl_res:
                           file_content = dl_res.read()
                       
-                      # Build path structure locally
                       local_path = Path(track) / exercise / path_str
                       local_path.parent.mkdir(parents=True, exist_ok=True)
                       local_path.write_bytes(file_content)
