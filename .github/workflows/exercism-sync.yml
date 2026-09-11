@@ -35,15 +35,15 @@ jobs:
               "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
           }
           
-          url = "https://exercism.org"
+          url = "https://exercism.org/api/v2/solutions"
           req = urllib.request.Request(url, headers=headers)
-          
+
           try:
-              with urllib.request.urlopen(req) as response:
-                  data = json.loads(response.read().decode())
+            with urllib.request.urlopen(req) as response:
+              data = json.loads(response.read().decode())
           except Exception as e:
-              print(f"Failed to fetch solutions from API: {e}")
-              exit(1)
+            print(f"Failed to fetch solutions from API: {e}")
+            exit(1)
 
           solutions = data.get("solutions", [])
           print(f"Found {len(solutions)} total solutions on your account.")
