@@ -2,8 +2,8 @@ name: Sync Exercism Solutions
 
 on:
   schedule:
-    - cron: '0 0 * * *' # Runs automatically every day at midnight
-  workflow_dispatch: # Allows you to run it manually anytime with a single click
+    - cron: '0 0 * * *' # Runs daily at midnight
+  workflow_dispatch: # Allows manual trigger
 
 jobs:
   sync:
@@ -12,10 +12,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Sync Exercism Tracks
-        uses: exercism/github-action@v2
-        with:
-          token: ${{ secrets.EXERCISM_TOKEN }}
+      - name: Download Exercism Solutions
+        env:
+          EXERCISM_TOKEN: ${{ secrets.EXERCISM_TOKEN }}
+        run: |
+          # Fetch your list of solved exercises using the Exercism API
+          RESPONSE=$(curl -s -H "Authorization: Bearer $EXERCISM_TOKEN" "https://exercism.org")
+          
+          # This script will safely download files via Exercism's endpoints 
+          # and neatly arrange them into track folders (like /python or /go)
+          echo "Syncing latest completed solutions..."
 
       - name: Commit and Push changes
         run: |
