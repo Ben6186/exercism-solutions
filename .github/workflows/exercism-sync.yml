@@ -57,7 +57,7 @@ jobs:
               exercise = sol.get("exercise", {}).get("slug")
               print(f"Syncing: Track={track} | Exercise={exercise}")
 
-              file_url = f"https://exercism.org/{uuid}/files?token={token}"
+              file_url = f"https://exercism.org/{uuid}/files"
               file_req = urllib.request.Request(file_url, headers=headers)
               
               try:
@@ -70,7 +70,7 @@ jobs:
                       if path_str.startswith(".exercism"):
                           continue
                           
-                      download_url = f"https://exercism.org/{uuid}/files/{path_str}?token={token}"
+                      download_url = f"https://exercism.org/{uuid}/files/{path_str}"
                       dl_req = urllib.request.Request(download_url, headers=headers)
                       
                       with urllib.request.urlopen(dl_req) as dl_res:
