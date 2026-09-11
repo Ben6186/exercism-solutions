@@ -9,49 +9,86 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     env:
-      # Forces GitHub actions to execute using the mandatory Node 24 runtime environment
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download Exercism Solutions
+      - name: Download Exercism Solutions via Python
         env:
           EXERCISM_TOKEN: ${{ secrets.EXERCISM_TOKEN }}
+        shell: python
         run: |
-          echo "Fetching solutions list from Exercism API..."
+          import os
+          import json
+          import urllib.request
+          from pathlib import Path
+
+          token = os.environ.get("EXERCISM_TOKEN")
+          if not token:
+              print("CRITICAL ERROR: EXERCISM_TOKEN is missing!")
+              exit(1)
+
+          headers = {"Authorization": f"Bearer {token}"}
           
-          # 1. Fetch metadata for all completed or iterated solutions
-          RESPONSE=$(curl -s -H "Authorization: Bearer $EXERCISM_TOKEN" "https://exercism.org")
+          # Fetch all solutions (including non-completed ones to be safe)
+          url = "https://exercism.org"
+          req = urllib.request.Request(url, headers=headers)
           
-          # 2. Extract solution tracks and exercise slugs using standard text tools
-          echo "$RESPONSE" | grep -o '"uuid":"[^"]*"' | cut -d'"' -f4 | while read -r uuid; do
-            
-            # Fetch details for each individual solution to find file names
-            SOL_DETAIL=$(curl -s -H "Authorization: Bearer $EXERCISM_TOKEN" "https://exercism.org")
-            TRACK=$(echo "$SOL_DETAIL" | grep -o '"track":"[^"]*"' | head -n1 | cut -d'"' -f4)
-            EXERCISE=$(echo "$SOL_DETAIL" | grep -o '"exercise":"[^"]*"' | head -n1 | cut -d'"' -f4)
-            
-            echo "Processing $TRACK / $EXERCISE..."
-            
-            # Create track directory structure (e.g., /python/two-fer/)
-            mkdir -p "$TRACK/$EXERCISE"
-            
-            # Fetch files list and download them into the target directory
-            FILE_URLS=$(curl -s -H "Authorization: Bearer $EXERCISM_TOKEN" "https://exercism.org/files")
-            echo "$FILE_URLS" | grep -o '"paths":\[[^]]*\]' | grep -o '"[^"]*"' | cut -d'"' -f2 | while read -r filepath; do
-              # Ensure subdirectory structure exists for nested code files
-              mkdir -p "$TRACK/$EXERCISE/$(dirname "$filepath")"
-              # Securely download the raw code file
-              curl -s -H "Authorization: Bearer $EXERCISM_TOKEN" "https://exercism.org/files/$filepath" -o "$TRACK/$EXERCISE/$filepath"
-            done
-          done
+          try:
+              with urllib.request.urlopen(req) as response:
+                  data = json.loads(response.read().decode())
+          except Exception as e:
+              print(f"Failed to fetch solutions: {e}")
+              exit(1)
+
+          solutions = data.get("results", [])
+          print(f"Found {len(solutions)} total solutions on your account.")
+
+          for sol in solutions:
+              uuid = sol.get("uuid")
+              # Process solutions that are completed, iterated, or published
+              if sol.get("status") not in ["completed", "iterated", "published"]:
+                  print(f"Skipping exercise {sol.get('exercise', {}).get('title')} because status is: {sol.get('status')}")
+                  continue
+
+              track = sol.get("track", {}).get("slug")
+              exercise = sol.get("exercise", {}).get("slug")
+              print(f"Syncing: Track={track} | Exercise={exercise}")
+
+              # Fetch the file list for this solution
+              file_url = f"https://exercism.org/{uuid}/files"
+              file_req = urllib.request.Request(file_url, headers=headers)
+              
+              try:
+                  with urllib.request.urlopen(file_req) as f_res:
+                      file_data = json.loads(f_res.read().decode())
+                  
+                  # Download each file
+                  paths = file_data.get("files", {}).get("paths", [])
+                  for path_str in paths:
+                      # Skip configuration metadata files if you just want code files
+                      if path_str.startswith(".exercism"):
+                          continue
+                          
+                      download_url = f"https://exercism.org/{uuid}/files/{path_str}"
+                      dl_req = urllib.request.Request(download_url, headers=headers)
+                      
+                      with urllib.request.urlopen(dl_req) as dl_res:
+                          file_content = dl_res.read()
+                      
+                      # Build path structure locally
+                      local_path = Path(track) / exercise / path_str
+                      local_path.parent.mkdir(parents=True, exist_ok=True)
+                      local_path.write_bytes(file_content)
+                      print(f" -> Downloaded: {local_path}")
+              except Exception as e:
+                  print(f" Error processing solution {uuid}: {e}")
 
       - name: Commit and Push changes
         run: |
           git config --global user.name "exercism-bot"
           git config --global user.email "actions@github.com"
           git add .
-          # Only commit if actual code modifications or additions are discovered
           git diff-index --quiet HEAD || git commit -m "sync: update completed exercism exercises"
           git push origin main
