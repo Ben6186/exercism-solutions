@@ -9,8 +9,8 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     env:
-      # Suppresses the Node runner deprecation warnings
-      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
+      # Forces GitHub actions to execute using the mandatory Node 24 runtime environment
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -19,14 +19,39 @@ jobs:
         env:
           EXERCISM_TOKEN: ${{ secrets.EXERCISM_TOKEN }}
         run: |
-          echo "Syncing latest completed solutions..."
-          # Fetch your list of solved exercises using the Exercism API
+          echo "Fetching solutions list from Exercism API..."
+          
+          # 1. Fetch metadata for all completed or iterated solutions
           RESPONSE=$(curl -s -H "Authorization: Bearer $EXERCISM_TOKEN" "https://exercism.org")
+          
+          # 2. Extract solution tracks and exercise slugs using standard text tools
+          echo "$RESPONSE" | grep -o '"uuid":"[^"]*"' | cut -d'"' -f4 | while read -r uuid; do
+            
+            # Fetch details for each individual solution to find file names
+            SOL_DETAIL=$(curl -s -H "Authorization: Bearer $EXERCISM_TOKEN" "https://exercism.org")
+            TRACK=$(echo "$SOL_DETAIL" | grep -o '"track":"[^"]*"' | head -n1 | cut -d'"' -f4)
+            EXERCISE=$(echo "$SOL_DETAIL" | grep -o '"exercise":"[^"]*"' | head -n1 | cut -d'"' -f4)
+            
+            echo "Processing $TRACK / $EXERCISE..."
+            
+            # Create track directory structure (e.g., /python/two-fer/)
+            mkdir -p "$TRACK/$EXERCISE"
+            
+            # Fetch files list and download them into the target directory
+            FILE_URLS=$(curl -s -H "Authorization: Bearer $EXERCISM_TOKEN" "https://exercism.org/files")
+            echo "$FILE_URLS" | grep -o '"paths":\[[^]]*\]' | grep -o '"[^"]*"' | cut -d'"' -f2 | while read -r filepath; do
+              # Ensure subdirectory structure exists for nested code files
+              mkdir -p "$TRACK/$EXERCISE/$(dirname "$filepath")"
+              # Securely download the raw code file
+              curl -s -H "Authorization: Bearer $EXERCISM_TOKEN" "https://exercism.org/files/$filepath" -o "$TRACK/$EXERCISE/$filepath"
+            done
+          done
 
       - name: Commit and Push changes
         run: |
           git config --global user.name "exercism-bot"
           git config --global user.email "actions@github.com"
           git add .
-          git diff-index --quiet HEAD || git commit -m "sync: update exercism exercises"
+          # Only commit if actual code modifications or additions are discovered
+          git diff-index --quiet HEAD || git commit -m "sync: update completed exercism exercises"
           git push origin main
