@@ -29,13 +29,11 @@ jobs:
               print("CRITICAL ERROR: EXERCISM_TOKEN is missing!")
               exit(1)
 
-          # FIXED: Added a standard User-Agent header to prevent Cloudflare/WAF from throwing a 403 Forbidden
           headers = {
-              "Authorization": f"Bearer {token}",
               "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
           }
           
-          url = "https://exercism.org/api/v2/solutions"
+          url = f"https://exercism.org/api/v2/solutions?token={token}"
           req = urllib.request.Request(url, headers=headers)
 
           try:
@@ -59,7 +57,7 @@ jobs:
               exercise = sol.get("exercise", {}).get("slug")
               print(f"Syncing: Track={track} | Exercise={exercise}")
 
-              file_url = f"https://exercism.org/{uuid}/files"
+              file_url = f"https://exercism.org/{uuid}/files?token={token}"
               file_req = urllib.request.Request(file_url, headers=headers)
               
               try:
@@ -72,7 +70,7 @@ jobs:
                       if path_str.startswith(".exercism"):
                           continue
                           
-                      download_url = f"https://exercism.org/{uuid}/files/{path_str}"
+                      download_url = f"https://exercism.org/{uuid}/files/{path_str}?token={token}"
                       dl_req = urllib.request.Request(download_url, headers=headers)
                       
                       with urllib.request.urlopen(dl_req) as dl_res:
